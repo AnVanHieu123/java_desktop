@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressIndicator?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox alignment="CENTER" cache="true" nodeOrientation="LEFT_TO_RIGHT" prefHeight="254.0" prefWidth="482.0" spacing="10" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1">
+    <ProgressIndicator fx:id="progressIndicator" prefHeight="84.0" prefWidth="84.0" />
+    <Label fx:id="lblStatus" style="-fx-font-size: 16px;" text="Đang tải..." />
+</VBox>

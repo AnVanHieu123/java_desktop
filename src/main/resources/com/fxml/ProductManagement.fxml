@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.Cursor?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.effect.DropShadow?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.RowConstraints?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane prefHeight="1080.0" prefWidth="2000.0" style="-fx-background-color: #f5f6fa;" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.javaadv.ProductController">
+    <!-- Left Sidebar with improved styling -->
+    <left>
+        <VBox alignment="TOP_CENTER" prefHeight="1080.0" prefWidth="400.0" spacing="15.0" style="-fx-background-color: #2c3e50;">
+            <padding>
+                <Insets bottom="30.0" left="20.0" right="20.0" top="30.0" />
+            </padding>
+            <children>
+                <!-- Logo -->
+                <Label style="-fx-font-size: 20px; -fx-font-weight: bold;" text="RESTO MANAGER" textFill="WHITE">
+                    <font>
+                        <Font name="System Bold" size="20.0" />
+                    </font>
+                    <VBox.margin>
+                        <Insets bottom="40.0" />
+                    </VBox.margin>
+                </Label>
+
+                <!-- Profile Section with improved styling -->
+                <StackPane>
+                    <Circle fill="#34495e" radius="70.0" />
+                    <ImageView fx:id="imgAvatar" fitHeight="140.0" fitWidth="140.0" pickOnBounds="true" preserveRatio="true">
+                        <image>
+                            <Image url="@../../image/avt.jpg" />
+                        </image>
+                    </ImageView>
+                </StackPane>
+
+                <Label fx:id="lblUserName" textAlignment="CENTER" textFill="WHITE">
+                    <font>
+                        <Font name="System Bold" size="18.0" />
+                    </font>
+                    <VBox.margin>
+                        <Insets bottom="5.0" top="15.0" />
+                    </VBox.margin>
+                </Label>
+
+                <Label fx:id="lblUserPosition" text="Manager" textAlignment="CENTER" textFill="#ecf0f1">
+                    <font>
+                        <Font name="System" size="14.0" />
+                    </font>
+                    <VBox.margin>
+                        <Insets bottom="40.0" />
+                    </VBox.margin>
+                </Label>
+
+                <!-- Navigation Menu with improved styling - Now using Buttons -->
+                <Button fx:id="btnOverview" alignment="CENTER_LEFT" contentDisplay="LEFT" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handleOverview" prefHeight="50.0" style="-fx-background-color: transparent; -fx-background-radius: 8; -fx-text-fill: white;" text="Tổng quan">
+                    <font>
+                        <Font name="System Bold" size="16.0" />
+                    </font>
+                    <graphic>
+                        <ImageView fitHeight="24.0" fitWidth="24.0">
+                            <Image url="@../../image/home.png" />
+                        </ImageView>
+                    </graphic>
+                    <padding>
+                        <Insets left="15.0" />
+                    </padding>
+                    <cursor>
+                        <Cursor fx:constant="HAND" />
+                    </cursor>
+                </Button>
+
+                <Button fx:id="btnUserManagement" alignment="CENTER_LEFT" contentDisplay="LEFT" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handleUserManagement" prefHeight="50.0" style="-fx-background-color: transparent; -fx-background-radius: 8; -fx-text-fill: white;" text="Quản lý người dùng">
+                    <font>
+                        <Font name="System" size="16.0" />
+                    </font>
+                    <graphic>
+                        <ImageView fitHeight="24.0" fitWidth="24.0">
+                            <Image url="@../../image/order.png" />
+                        </ImageView>
+                    </graphic>
+                    <padding>
+                        <Insets left="15.0" />
+                    </padding>
+                    <cursor>
+                        <Cursor fx:constant="HAND" />
+                    </cursor>
+                </Button>
+
+                <Button fx:id="btnProductManagement" alignment="CENTER_LEFT" contentDisplay="LEFT" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handleProductManagement" prefHeight="50.0" style="-fx-background-color: #3498db; -fx-background-radius: 8; -fx-text-fill: white;" text="Quản lý sản phẩm">
+                    <font>
+                        <Font name="System" size="16.0" />
+                    </font>
+                    <graphic>
+                        <ImageView fitHeight="24.0" fitWidth="24.0">
+                            <Image url="@../../image/customer.png" />
+                        </ImageView>
+                    </graphic>
+                    <padding>
+                        <Insets left="15.0" />
+                    </padding>
+                    <cursor>
+                        <Cursor fx:constant="HAND" />
+                    </cursor>
+                </Button>
+
+                <Button fx:id="btnOrderManagement" alignment="CENTER_LEFT" contentDisplay="LEFT" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handleOrderManagement" prefHeight="50.0" style="-fx-background-color: transparent; -fx-background-radius: 8; -fx-text-fill: white;" text="Quản lý đơn hàng">
+                    <font>
+                        <Font name="System" size="16.0" />
+                    </font>
+                    <graphic>
+                        <ImageView fitHeight="24.0" fitWidth="24.0">
+                            <Image url="@../../image/menu.png" />
+                        </ImageView>
+                    </graphic>
+                    <padding>
+                        <Insets left="15.0" />
+                    </padding>
+                    <cursor>
+                        <Cursor fx:constant="HAND" />
+                    </cursor>
+                </Button>
+
+
+                <Button fx:id="btnCategoryManagement" alignment="CENTER_LEFT" contentDisplay="LEFT" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#handleCategoryManagement" prefHeight="50.0" style="-fx-background-color: transparent; -fx-background-radius: 8; -fx-text-fill: white;" text="Quản lý danh mục sản phẩm">
+                    <font>
+                        <Font name="System" size="16.0" />
+                    </font>
+                    <graphic>
+                        <ImageView fitHeight="24.0" fitWidth="24.0">
+                            <Image url="@../../image/setting.png" />
+                        </ImageView>
+                    </graphic>
+                    <padding>
+                        <Insets left="15.0" />
+                    </padding>
+                    <cursor>
+                        <Cursor fx:constant="HAND" />
+                    </cursor>
+                </Button>
+
+
+
+                <Region VBox.vgrow="ALWAYS" />
+                <Button fx:id="btnSignOut" mnemonicParsing="false" onAction="#handleLogout" prefHeight="41.0" prefWidth="285.0" style="-fx-background-color: #2c3e50;" text="Thoát" textFill="#fffcfc">
+                    <graphic>
+                        <ImageView fitHeight="20" fitWidth="20">
+                            <image>
+                                <Image url="@../../image/logout.png" />
+                            </image>
+                        </ImageView>
+                    </graphic>
+                    <font>
+                        <Font size="17.0" />
+                    </font>
+                    <cursor>
+                        <Cursor fx:constant="OPEN_HAND" />
+                    </cursor>
+                </Button>
+            </children>
+        </VBox>
+    </left>
+
+    <!-- Main Content Area with improved styling -->
+    <center>
+        <BorderPane>
+            <top>
+                <HBox alignment="CENTER_LEFT" prefHeight="80.0" style="-fx-background-color: white; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0, 0, 3);">
+                    <padding>
+                        <Insets left="30.0" right="30.0" />
+                    </padding>
+                    <children>
+                        <Label style="-fx-font-size: 28px; -fx-text-fill: #2c3e50; -fx-font-weight: bold;" text="Trình quản lý hàng hóa">
+                            <font>
+                                <Font name="System Bold" size="28.0" />
+                            </font>
+                        </Label>
+                        <Region HBox.hgrow="ALWAYS" />
+
+                        <!-- Search field -->
+                        <HBox alignment="CENTER" spacing="10.0" style="-fx-background-color: #f5f6fa; -fx-background-radius: 20;">
+                            <padding>
+                                <Insets bottom="8.0" left="15.0" right="15.0" top="8.0" />
+                            </padding>
+                            <ImageView fitHeight="20.0" fitWidth="20.0">
+                                <Image url="@../../image/search.png" />
+                            </ImageView>
+                            <TextField fx:id="txtSearch" prefWidth="250.0" promptText="Search product by name" style="-fx-background-color: transparent; -fx-font-size: 14px;" />
+                        </HBox>
+
+                        <!-- Notification icon -->
+                        <StackPane>
+                            <ImageView fitHeight="24.0" fitWidth="24.0">
+                                <Image url="@../../image/notification.png" />
+                            </ImageView>
+                            <Circle fill="#e74c3c" radius="8.0" translateX="8.0" translateY="-8.0">
+                                <effect>
+                                    <DropShadow />
+                                </effect>
+                            </Circle>
+                            <HBox.margin>
+                                <Insets left="20.0" right="20.0" />
+                            </HBox.margin>
+                        </StackPane>
+                    </children>
+                </HBox>
+            </top>
+
+            <center>
+                <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: transparent;">
+                    <content>
+                        <VBox spacing="30.0" style="-fx-background-color: #f5f6fa;">
+                            <padding>
+                                <Insets bottom="30.0" left="30.0" right="30.0" top="30.0" />
+                            </padding>
+
+                            <!-- Welcome message -->
+                            <HBox style="-fx-background-color: #3498db; -fx-background-radius: 10; -fx-padding: 20;">
+                                <VBox spacing="5.0" HBox.hgrow="ALWAYS">
+                                    <Label fx:id="welcomeMessage" style="-fx-font-size: 22px; -fx-font-weight: bold;" text="Quản lý sản phẩm" textFill="WHITE">
+                                        <font>
+                                            <Font name="System Bold" size="22.0" />
+                                        </font>
+                                    </Label>
+                                    <Label style="-fx-font-size: 16px;" text="Một ngày thật nhiều năng lượng và may mắn nhé!" textFill="WHITE">
+                                        <font>
+                                            <Font size="16.0" />
+                                        </font>
+                                    </Label>
+                                </VBox>
+                                <ImageView fitHeight="80.0" fitWidth="80.0">
+                                    <Image url="@../../image/dashboard-icon.png" />
+                                </ImageView>
+                            </HBox>
+
+                            <!-- Order Statistics with improved styling -->
+                            <HBox spacing="30.0" />
+
+                            <!-- Orders Section Header -->
+                            <HBox alignment="CENTER_LEFT" prefHeight="0.0" prefWidth="1518.0">
+                                <Label style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;" text="Recent Orders">
+                                    <font>
+                                        <Font name="System Bold" size="20.0" />
+                                    </font>
+                                </Label>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <ComboBox fx:id="cmbCategory1" promptText="Filter: All Orders" style="-fx-background-radius: 5;">
+                                    <HBox.margin>
+                                        <Insets right="15.0" />
+                                    </HBox.margin>
+                                </ComboBox>
+                                <Button style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-background-radius: 5;" text="Export">
+                                    <font>
+                                        <Font name="System Bold" size="14.0" />
+                                    </font>
+                                </Button>
+                            </HBox>
+                            <!-- Products Stats Cards -->
+                            <HBox spacing="20.0">
+                                <!-- Total Products Card -->
+                                <VBox style="-fx-background-color: white; -fx-background-radius: 10; -fx-padding: 20;" HBox.hgrow="ALWAYS">
+                                    <effect>
+                                        <DropShadow color="rgba(0,0,0,0.1)" radius="5.0" />
+                                    </effect>
+                                </VBox>
+                            </HBox>
+
+                            <GridPane hgap="20" style="-fx-padding: 20; -fx-background-color: white; -fx-background-radius: 10;" vgap="20">
+                                <effect>
+                                    <DropShadow color="rgba(0,0,0,0.05)" radius="5" spread="0.1" />
+                                </effect>
+
+
+                                <!-- Dòng 0 -->
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Mã sản phẩm:" GridPane.columnIndex="0" GridPane.rowIndex="0" />
+                                <TextField fx:id="txtId" promptText="SP001" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="1" GridPane.rowIndex="0" />
+
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Tên sản phẩm:" GridPane.columnIndex="2" GridPane.rowIndex="0" />
+                                <TextField fx:id="txtName" promptText="Nhập tên sản phẩm" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="3" GridPane.rowIndex="0" />
+
+                                <!-- Dòng 1 -->
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Danh mục:" GridPane.columnIndex="0" GridPane.rowIndex="1" />
+                                <TextField fx:id="txtCategory" promptText="Nhập danh mục" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="1" GridPane.rowIndex="1" />
+
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Giá bán:" GridPane.columnIndex="2" GridPane.rowIndex="1" />
+                                <TextField fx:id="txtPrice" promptText="Nhập giá bán" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="3" GridPane.rowIndex="1" />
+
+                                <!-- Dòng 2 -->
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Kích cỡ:" GridPane.columnIndex="0" GridPane.rowIndex="2" />
+                                <TextField fx:id="txtSize" promptText="Nhập size" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="1" GridPane.rowIndex="2" />
+
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Số lượng:" GridPane.columnIndex="2" GridPane.rowIndex="2" />
+                                <TextField fx:id="txtStock" promptText="Nhập số lượng" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="3" GridPane.rowIndex="2" />
+
+                                <!-- Dòng 3 -->
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Mô tả:" GridPane.columnIndex="0" GridPane.rowIndex="3" />
+                                <TextField fx:id="txtDescription" promptText="Nhập mô tả" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="1" GridPane.rowIndex="3" GridPane.columnSpan="3"/>
+
+                                <!-- Dòng 4 -->
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="Giảm giá (%):" GridPane.columnIndex="0" GridPane.rowIndex="4" />
+                                <TextField fx:id="txtDiscount" promptText="Nhập % giảm giá" style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="1" GridPane.rowIndex="4" />
+
+                                <Label style="-fx-text-fill: black; -fx-font-weight: bold;" text="URL ảnh:" GridPane.columnIndex="2" GridPane.rowIndex="4" />
+                                <TextField fx:id="txtImageUrl" promptText="https://..." style="-fx-pref-height: 35; -fx-font-size: 14px; -fx-text-fill: black;" GridPane.columnIndex="3" GridPane.rowIndex="4" GridPane.columnSpan="2"/>
+
+                                <columnConstraints>
+                           <ColumnConstraints />
+                           <ColumnConstraints />
+                           <ColumnConstraints />
+                           <ColumnConstraints />
+                           <ColumnConstraints />
+                           <ColumnConstraints />
+                        </columnConstraints>
+                        <rowConstraints>
+                           <RowConstraints />
+                           <RowConstraints />
+                           <RowConstraints />
+                        </rowConstraints>
+                            </GridPane>
+
+                        <!-- Nút chức năng -->
+                        <HBox alignment="CENTER" spacing="20">
+                            <Button fx:id="btnAdd" style="-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-pref-width: 120; -fx-pref-height: 40;" text="Thêm" />
+                            <Button fx:id="btnUpdate" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-pref-width: 120; -fx-pref-height: 40;" text="Sửa" />
+                            <Button fx:id="btnDelete" style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-pref-width: 120; -fx-pref-height: 40;" text="Xóa" />
+                            <Button fx:id="btnClear" onAction="#clearFields" style="-fx-background-color: #f39c12; -fx-text-fill: white; -fx-font-weight: bold; -fx-pref-width: 120; -fx-pref-height: 40;" text="Xóa trắng" />
+                            <Button fx:id="btnStatistics" style="-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-weight: bold; -fx-pref-width: 120; -fx-pref-height: 40;" text="Thống kê" onAction="#showStatistics" />
+
+                        </HBox>
+
+                            <!-- Orders Table with improved styling -->
+                            <TableView fx:id="productTable" onMouseClicked="#handleTableClick" prefHeight="577.0" prefWidth="1426.0" style="-fx-background-radius: 10; -fx-border-radius: 10;" VBox.vgrow="ALWAYS">
+                                <effect>
+                                    <DropShadow color="rgba(0,0,0,0.1)" radius="5.0" />
+                                </effect>
+                                <columns>
+                                    <TableColumn fx:id="colId" prefWidth="70" text="ID" />
+                                    <TableColumn fx:id="colName" prefWidth="250" text="Tên sản phẩm" />
+                                    <TableColumn fx:id="colPrice" prefWidth="150" text="Giá bán" />
+                                    <TableColumn fx:id="colStock" prefWidth="100" text="Tồn kho" />
+
+                                </columns>
+                            </TableView>
+                        </VBox>
+                    </content>
+                </ScrollPane>
+            </center>
+        </BorderPane>
+    </center>
+</BorderPane>

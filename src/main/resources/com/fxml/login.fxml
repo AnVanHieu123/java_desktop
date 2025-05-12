@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.Cursor?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.text.Font?>
+<?import javafx.scene.text.Text?>
+
+<AnchorPane prefHeight="431.0" prefWidth="817.0" style="-fx-background-color: black;" stylesheets="@../../css/style.css" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.javaadv.LoginController">
+   <children>
+      <ImageView fitHeight="451.0" fitWidth="500.0" layoutX="-7.0" opacity="0.31" pickOnBounds="true" preserveRatio="true">
+         <image>
+            <Image url="@../../image/imageview1.png" />
+         </image></ImageView>
+      <AnchorPane layoutX="457.0" layoutY="28.0" prefHeight="355.0" prefWidth="359.0" style="-fx-background-color: #9C2B27; -fx-border-style: 10px;">
+         <children>
+            <TextField id="txtUsername" fx:id="txtUsername" layoutX="31.0" layoutY="129.0" prefHeight="40.0" prefWidth="280.0" promptText="username/email" style="-fx-border-color: transparent transparent black transparent; -fx-background-color: #9C2B27; -fx-border-width: 0 0 2px 0;">
+               <cursor>
+                  <Cursor fx:constant="TEXT" />
+               </cursor>
+            </TextField>
+            <PasswordField id="txtPassword" fx:id="txtPassword" layoutX="30.0" layoutY="194.0" prefHeight="40.0" prefWidth="280.0" promptText="password" style="-fx-background-color: #9C2B27; -fx-border-color: transparent transparent black transparent; -fx-border-width: 0 0 2px 0;">
+               <cursor>
+                  <Cursor fx:constant="TEXT" />
+               </cursor>
+            </PasswordField>
+            <Label fx:id="lblError" managed="false" style="-fx-text-fill: red; -fx-font-weight: bold;" visible="false" />
+            <Text fill="#bfbfbf" fontSmoothingType="LCD" layoutY="84.0" strokeType="OUTSIDE" strokeWidth="0.0" text="Sign In" textAlignment="CENTER" wrappingWidth="340.0">
+               <font>
+                  <Font name="Calibri" size="49.0" />
+               </font>
+            </Text>
+
+            <Button layoutX="31.0" layoutY="256.0" mnemonicParsing="false" onAction="#handleLogin" prefHeight="26.0" prefWidth="280.0" style="-fx-background-color: #E45652;" text="Sign in" defaultButton="true">
+               <font>
+                  <Font size="18.0" />
+               </font>
+            </Button>
+            <Label alignment="CENTER" layoutX="42.0" layoutY="317.0" prefHeight="18.0" prefWidth="250.0" text="Forgot Password?" textAlignment="CENTER" textFill="#dfdfdf">
+               <font>
+                  <Font size="16.0" />
+               </font>
+            </Label>
+         </children>
+      </AnchorPane>
+      <Label contentDisplay="CENTER" layoutX="23.0" layoutY="113.0" text="Welcome to BANGIAY" textAlignment="RIGHT" textFill="#e1dada">
+         <font>
+            <Font name="System Bold" size="37.0" />
+         </font>
+      </Label>
+      <Label layoutX="18.0" layoutY="150.0" prefHeight="78.0" prefWidth="395.0" text="Software used for product management" textFill="#ddd3d3">
+         <font>
+            <Font size="22.0" />
+         </font>
+      </Label>
+      <Label layoutX="18.0" layoutY="226.0" text="Products of group 4" textFill="#ddd3d3" />
+      <Button contentDisplay="CENTER" layoutX="18.0" layoutY="265.0" mnemonicParsing="false" prefHeight="40.0" prefWidth="198.0" style="-fx-background-color: #E95E55; -fx-background-radius: 3; -fx-border-radius: 4px;" text="SIGN UP" textAlignment="CENTER" textFill="#e7e6e6" />
+   </children>
+</AnchorPane>
