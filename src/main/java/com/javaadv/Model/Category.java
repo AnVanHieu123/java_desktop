@@ -1,25 +1,51 @@
 package com.javaadv.Model;
 
-public class Category {
-    private String categoryId;  // Mã danh mục (VD: DM01)
-    private String name;       // Tên danh mục (VD: Giày thể thao nam)
-    private String type;       // Loại (VD: Nam/Nữ/Trẻ em)
-    private int shoeCount;     // Số lượng giày trong danh mục
+import java.time.LocalDateTime;
 
-    public Category(String categoryId, String name, String type, int shoeCount) {
-        this.categoryId = categoryId;
-        this.name = name;
-        this.type = type;
-        this.shoeCount = shoeCount;
+public class Category {
+    private int id;
+    private String name;
+    private LocalDateTime createdAt;
+
+    public Category() {
     }
 
-    // Getter/Setter
-    public String getCategoryId() { return categoryId; }
-    public String getName() { return name; }
-    public String getType() { return type; }
-    public int getShoeCount() { return shoeCount; }
+    public Category(int id, String name, LocalDateTime createdAt) {
+        this.id = id;
+        this.name = name;
+        this.createdAt = createdAt;
+    }
 
-    public void setName(String name) { this.name = name; }
-    public void setType(String type) { this.type = type; }
-    public void setShoeCount(int shoeCount) { this.shoeCount = shoeCount; }
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    @Override
+    public String toString() {
+        return "Category{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", createdAt=" + createdAt +
+                '}';
+    }
 }

@@ -1,6 +1,9 @@
-package com.javaadv;
+package com.javaadv.Controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javaadv.Model.ApiResponse;
 import com.javaadv.Model.User;
+import com.javaadv.SceneManager;
 import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -23,9 +26,16 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.ResourceBundle;
 import java.util.stream.Collectors;
 
 public class UserController implements Initializable {
@@ -58,13 +68,16 @@ public class UserController implements Initializable {
 
     private final ObservableList<User> userList = FXCollections.observableArrayList();
     private User selectedUser = null;
+    private static final String API_BASE_URL = "http://localhost:8081"; // Đúng với Swagger UI
+    private String TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aHVhdmFuYW4yMDRAZ21haWwuY29tIiwiaWF0IjoxNzQ2Nzk1OTI4LCJleHAiOjE3NDgyMzU5Mjh9.lG-2UxVRmiFqK6jfg16HyIhFcT3fq2TYLJPLyOVJ7OI"; // Gán token từ Postman vào đây
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
         setupTable();
-        setupTableSelectionListener(); // Đổi tên từ setupFocusListener để rõ ràng hơn
+        setupTableSelectionListener();
         setupButtonActions();
-        loadFakeUsers(); // Load dữ liệu giả lập
+        loadUsersFromAPI();
         setupSearchListener();
         btnStatistics.setOnAction(e -> showStatistics());
         userTable.setOnMouseClicked(this::handleTableClick);
@@ -106,7 +119,6 @@ public class UserController implements Initializable {
 
         userTable.setItems(userList);
 
-        // Thêm sự kiện click một lần vào hàng để chọn và hiển thị thông tin
         userTable.setOnMouseClicked(this::handleTableRowClick);
     }
 
@@ -118,33 +130,77 @@ public class UserController implements Initializable {
         }
     }
 
-    private void loadFakeUsers() {
-        List<User> fakeUsers = new ArrayList<>();
-        String[] lastNames = {"Nguyen", "Tran", "Le", "Pham", "Hoang"};
-        String[] middleNames = {"Van", "Thi", "Minh", "Ngoc", "Anh"};
-        String[] firstNames = {"An", "Binh", "Cuong", "Dung", "Hanh"};
-        String[] statuses = {"Active", "Inactive"};
-        String[] roles = {"Admin", "User"};
-        Random random = new Random();
+    private void loadUsersFromAPI() {
+        new Thread(() -> {
+            int retries = 3;
+            int timeout = 5000; // 5 giây
+            for (int attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    System.out.println("Thử lần " + attempt + " - Gọi API tại: " + API_BASE_URL + "/api/admin/users/list?pageNo=1&pageSize=10&sorts=fullName:desc");
+                    System.out.println("Token: " + TOKEN);
 
-        for (int i = 1; i <= 100; i++) {
-            String fullName = lastNames[random.nextInt(lastNames.length)] + " " +
-                    middleNames[random.nextInt(middleNames.length)] + " " +
-                    firstNames[random.nextInt(firstNames.length)];
-            String email = "user" + i + "@example.com";
-            String phone = "09" + String.format("%07d", random.nextInt(10000000));
-            String status = statuses[random.nextInt(statuses.length)];
-            String address = String.format("%d Đường ABC, Quận %d, TP HCM", i, random.nextInt(12) + 1);
-            String role = roles[random.nextInt(roles.length)];
-            String createdAt = "2025-05-01 10:00:00";
-            String updatedAt = "2025-05-02 12:00:00";
+                    URL url = new URL(API_BASE_URL + "/api/admin/users/list?pageNo=1&pageSize=10&sorts=fullName:desc");
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setConnectTimeout(timeout);
+                    conn.setReadTimeout(timeout);
 
-            User user = new User(i, fullName, email, phone, status, address, role, createdAt, updatedAt);
-            fakeUsers.add(user);
-        }
+                    int responseCode = conn.getResponseCode();
+                    System.out.println("Mã phản hồi: " + responseCode);
 
-        userList.setAll(fakeUsers);
-        userTable.refresh();
+                    if (responseCode == 200) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                        StringBuilder response = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            response.append(line);
+                        }
+                        reader.close();
+                        System.out.println("Phản hồi API: " + response.toString());
+
+                        // Deserialize thành ApiResponse
+                        ApiResponse apiResponse = objectMapper.readValue(response.toString(), ApiResponse.class);
+                        List<User> users = apiResponse.getData().getItems();
+
+                        Platform.runLater(() -> {
+                            userList.clear();
+                            userList.addAll(users);
+                            userTable.refresh();
+                            // Thêm log để kiểm tra dữ liệu trong userList
+                            System.out.println("Số lượng người dùng trong userList: " + userList.size());
+                            userList.forEach(user -> System.out.println("User: " + user.getId() + ", FullName: " + user.getFullName() + ", Email: " + user.getEmail()));
+                        });
+                        break; // Thoát vòng lặp nếu thành công
+                    } else {
+                        BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+                        StringBuilder errorResponse = new StringBuilder();
+                        String errorLine;
+                        while ((errorLine = errorReader.readLine()) != null) {
+                            errorResponse.append(errorLine);
+                        }
+                        errorReader.close();
+                        System.out.println("Phản hồi lỗi: " + errorResponse.toString());
+
+                        Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                        String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải dữ liệu: " + message + " (Mã lỗi: " + responseCode + ")"));
+                        break;
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    if (attempt == retries) {
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server sau " + retries + " lần thử: " + e.getMessage()));
+                    }
+                    try {
+                        Thread.sleep(2000); // Chờ 2 giây trước khi thử lại
+                    } catch (InterruptedException ie) {
+                        ie.printStackTrace();
+                    }
+                }
+            }
+        }).start();
     }
 
     @FXML
@@ -173,7 +229,7 @@ public class UserController implements Initializable {
 
     private void showChart(Map<String, Long> statusCount, Map<String, Long> roleCount) {
         if (userList.isEmpty()) {
-            showAlert("Thông báo", "Không có dữ liệu người dùng để hiển thị");
+            showAlert(Alert.AlertType.ERROR, "Thông báo", "Không có dữ liệu người dùng để hiển thị");
             return;
         }
 
@@ -237,38 +293,83 @@ public class UserController implements Initializable {
         btnUpdate.setOnAction(this::handleEdit);
         btnDelete.setOnAction(this::handleDelete);
     }
-
+@FXML
     private void handleAdd(ActionEvent event) {
         try {
-            int newId = userList.stream()
-                    .mapToInt(User::getId)
-                    .max()
-                    .orElse(0) + 1;
-
             User newUser = new User(
-                    newId,
+                    Integer.parseInt(txtId.getText().trim()),
                     txtFullName.getText().trim(),
                     txtEmail.getText().trim(),
                     txtPhone.getText().trim(),
                     txtStatus.getText().trim(),
                     txtAddress.getText().trim(),
                     txtRole.getText().trim(),
-                    "2025-05-01 10:00:00", // Giả lập createdAt
-                    "2025-05-01 10:00:00"  // Giả lập updatedAt
+                    "2025-05-24 08:25:00", // Thời gian hiện tại
+                    "2025-05-24 08:25:00"
             );
 
-            userList.add(newUser);
-            userTable.refresh();
-            showAlert("Thành công", "Thêm người dùng thành công!");
+            addUserToAPI(newUser);
             clearFields();
         } catch (Exception e) {
-            showAlert("Lỗi", "Thêm người dùng thất bại: " + e.getMessage());
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Thêm người dùng thất bại: " + e.getMessage());
         }
     }
+@FXML
+    private void addUserToAPI(User user) {
+        new Thread(() -> {
+            try {
+                String jsonBody = objectMapper.writeValueAsString(user);
+                URL url = new URL(API_BASE_URL + "/api/admin/users");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
 
+                try (OutputStream os = conn.getOutputStream()) {
+                    byte[] input = jsonBody.getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode == 200) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        response.append(line);
+                    }
+                    reader.close();
+
+                    User addedUser = objectMapper.readValue(response.toString(), User.class);
+                    Platform.runLater(() -> {
+                        userList.add(addedUser);
+                        userTable.refresh();
+                        showAlert(Alert.AlertType.ERROR, "Thành công", "Thêm người dùng thành công!");
+                    });
+                } else {
+                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+                    StringBuilder errorResponse = new StringBuilder();
+                    String errorLine;
+                    while ((errorLine = errorReader.readLine()) != null) {
+                        errorResponse.append(errorLine);
+                    }
+                    errorReader.close();
+
+                    Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                    String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Thêm người dùng thất bại: " + message + " (Mã lỗi: " + responseCode + ")"));
+                }
+                conn.disconnect();
+            } catch (Exception e) {
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi khi gọi API: " + e.getMessage()));
+            }
+        }).start();
+    }
+@FXML
     private void handleEdit(ActionEvent event) {
         if (selectedUser == null) {
-            showAlert("Lỗi", "Vui lòng chọn người dùng để sửa!");
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng chọn người dùng để sửa!");
             return;
         }
 
@@ -279,20 +380,72 @@ public class UserController implements Initializable {
             selectedUser.setStatus(txtStatus.getText().trim());
             selectedUser.setAddress(txtAddress.getText().trim());
             selectedUser.setRole(txtRole.getText().trim());
-            selectedUser.setUpdatedAt("2025-05-02 12:00:00"); // Cập nhật thời gian giả lập
+            selectedUser.setUpdatedAt("2025-05-24 08:25:00");
 
-            userTable.refresh();
-            showAlert("Thành công", "Cập nhật người dùng thành công!");
+            updateUserInAPI(selectedUser);
             clearFields();
         } catch (Exception e) {
-            showAlert("Lỗi", "Cập nhật người dùng thất bại: " + e.getMessage());
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Cập nhật người dùng thất bại: " + e.getMessage());
         }
+    }
+
+    private void updateUserInAPI(User user) {
+        new Thread(() -> {
+            try {
+                String jsonBody = objectMapper.writeValueAsString(user);
+                URL url = new URL(API_BASE_URL + "/api/admin/users/" + user.getId());
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("PUT");
+                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setDoOutput(true);
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    byte[] input = jsonBody.getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode == 200) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        response.append(line);
+                    }
+                    reader.close();
+
+                    User updatedUser = objectMapper.readValue(response.toString(), User.class);
+                    Platform.runLater(() -> {
+                        int index = userList.indexOf(selectedUser);
+                        userList.set(index, updatedUser);
+                        userTable.refresh();
+                        showAlert(Alert.AlertType.ERROR, "Thành công", "Cập nhật người dùng thành công!");
+                    });
+                } else {
+                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+                    StringBuilder errorResponse = new StringBuilder();
+                    String errorLine;
+                    while ((errorLine = errorReader.readLine()) != null) {
+                        errorResponse.append(errorLine);
+                    }
+                    errorReader.close();
+
+                    Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                    String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Cập nhật người dùng thất bại: " + message + " (Mã lỗi: " + responseCode + ")"));
+                }
+                conn.disconnect();
+            } catch (Exception e) {
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi khi gọi API: " + e.getMessage()));
+            }
+        }).start();
     }
 
     @FXML
     private void handleDelete(ActionEvent event) {
         if (selectedUser == null) {
-            showAlert("Lỗi", "Vui lòng chọn người dùng cần xóa");
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng chọn người dùng cần xóa");
             return;
         }
 
@@ -303,11 +456,45 @@ public class UserController implements Initializable {
 
         Optional<ButtonType> result = confirmDialog.showAndWait();
         if (result.isPresent() && result.get() == ButtonType.OK) {
-            userList.remove(selectedUser);
-            userTable.refresh();
+            deleteUserFromAPI(selectedUser.getId());
             clearFields();
-            showAlert("Thành công", "Đã xóa người dùng thành công");
         }
+    }
+
+    private void deleteUserFromAPI(int userId) {
+        new Thread(() -> {
+            try {
+                URL url = new URL(API_BASE_URL + "/api/admin/users/delete/" + userId);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("DELETE");
+                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
+                conn.setRequestProperty("Content-Type", "application/json");
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode == 200) {
+                    Platform.runLater(() -> {
+                        userList.removeIf(user -> user.getId() == userId);
+                        userTable.refresh();
+                        showAlert(Alert.AlertType.ERROR, "Thành công", "Đã xóa người dùng thành công");
+                    });
+                } else {
+                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+                    StringBuilder errorResponse = new StringBuilder();
+                    String errorLine;
+                    while ((errorLine = errorReader.readLine()) != null) {
+                        errorResponse.append(errorLine);
+                    }
+                    errorReader.close();
+
+                    Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                    String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Xóa người dùng thất bại: " + message + " (Mã lỗi: " + responseCode + ")"));
+                }
+                conn.disconnect();
+            } catch (Exception e) {
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi khi gọi API: " + e.getMessage()));
+            }
+        }).start();
     }
 
     @FXML
@@ -331,7 +518,6 @@ public class UserController implements Initializable {
                 alert.showAndWait();
             }
         } else if (event.getClickCount() == 1) {
-            // Đã được xử lý trong handleTableRowClick
             User clickedUser = userTable.getSelectionModel().getSelectedItem();
             if (clickedUser != null) {
                 selectedUser = clickedUser;
@@ -343,7 +529,6 @@ public class UserController implements Initializable {
     private void populateFields(User user) {
         if (user == null) return;
 
-        // Sử dụng Platform.runLater để đảm bảo các thay đổi UI được thực hiện trên JavaFX Application Thread
         Platform.runLater(() -> {
             txtId.setText(String.valueOf(user.getId()));
             txtFullName.setText(user.getFullName() != null ? user.getFullName() : "");
@@ -353,7 +538,6 @@ public class UserController implements Initializable {
             txtAddress.setText(user.getAddress() != null ? user.getAddress() : "");
             txtRole.setText(user.getRole() != null ? user.getRole() : "");
 
-            // Đặt trọng tâm vào trường họ tên sau khi điền thông tin
             txtFullName.requestFocus();
         });
     }
@@ -370,8 +554,8 @@ public class UserController implements Initializable {
         selectedUser = null;
     }
 
-    private void showAlert(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+    private void showAlert(Alert.AlertType error, String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle(title);
         alert.setHeaderText(null);
         alert.setContentText(message);

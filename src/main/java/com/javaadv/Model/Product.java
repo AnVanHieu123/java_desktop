@@ -1,5 +1,6 @@
 package com.javaadv.Model;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -105,7 +106,7 @@ public class Product {
     }
 
     public void setImageUrl(List<String> imageUrl) {
-        this.imageUrl = Collections.singletonList(String.valueOf(imageUrl));
+        this.imageUrl = imageUrl != null ? new ArrayList<>(imageUrl) : null;
     }
 
     public String getSlug() {

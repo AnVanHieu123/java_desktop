@@ -1,6 +1,6 @@
-package com.javaadv;
+package com.javaadv.Controller;
 
-import com.javaadv.Model.User;
+import com.javaadv.SceneManager;
 import com.javaadv.Services.AuthService;
 import javafx.animation.TranslateTransition;
 import javafx.fxml.FXML;
@@ -41,14 +41,8 @@ public class LoginController {
             AuthService authService = new AuthService();
             String accessToken = authService.login(username, password);
 
-            // 2. Lưu thông tin user (không lưu password)
-//            User user = User.getCurrentUser();
-//            user.setUsername(username);
-//            user.setAccessToken(accessToken);
-
-            // 3. Chuyển sang Dashboard (giữ nguyên hiệu ứng transition nếu có)
             Stage stage = (Stage) txtUsername.getScene().getWindow();
-            SceneManager.changeScene(stage, "/com/fxml/Dashboard.fxml", "Quản lý sinh viên");
+            SceneManager.changeScene(stage, "/com/fxml/Dashboard.fxml", "Phần mềm quản lý");
 
         } catch (HttpTimeoutException e) {
             showError("Mất kết nối với server. Vui lòng thử lại!");
