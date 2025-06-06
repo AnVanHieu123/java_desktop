@@ -12,6 +12,7 @@ public class User {
     private final StringProperty role = new SimpleStringProperty();
     private final StringProperty createdAt = new SimpleStringProperty();
     private final StringProperty updatedAt = new SimpleStringProperty();
+    private final StringProperty password = new SimpleStringProperty();
 
     public User() {
     }
@@ -39,6 +40,19 @@ public class User {
 
     public IntegerProperty idProperty() {
         return id;
+    }
+
+    // Getters và Setters cho password
+    public String getPassword() {
+        return password.get();
+    }
+
+    public void setPassword(String password) {
+        this.password.set(password);
+    }
+
+    public StringProperty passwordProperty() {
+        return password;
     }
 
     // Getters và Setters cho fullName

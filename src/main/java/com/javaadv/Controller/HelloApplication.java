@@ -14,7 +14,6 @@ public class HelloApplication extends Application {
         FXMLLoader fxmlLoader = new FXMLLoader(HelloApplication.class.getResource("/com/fxml/login.fxml"));
         Scene scene = new Scene(fxmlLoader.load(), 825, 400);
         stage.setTitle("ADMIN SYSTEM");
-
         stage.setScene(scene);
         stage.show();
     }

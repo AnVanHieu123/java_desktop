@@ -3,6 +3,7 @@ package com.javaadv.Controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaadv.SceneManager;
+import com.javaadv.SessionManager;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -40,9 +41,6 @@ public class DashboardController {
     private static final String API_SALES = "sales";
     private static final String API_SALES_BY_CATEGORY = "sales-by-category";
     private static final String API_ORDERS_STATUS = "orders-status";
-
-    // Token xác thực
-    private static final String AUTH_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aHVhdmFuYW4yMDRAZ21haWwuY29tIiwiaWF0IjoxNzQ3Njc3MzE4LCJleHAiOjE3NDkxMTczMTh9.xARIvIk-r42hWR57biCBNJDBR7KAF-4IIxcDvmNsQpA";
 
     // FXML Components
     @FXML private BorderPane mainContent;
@@ -99,11 +97,12 @@ public class DashboardController {
 
     private JsonNode callApi(String endpoint) throws IOException {
         HttpURLConnection conn = null;
+        String token = SessionManager.getInstance().getAccessToken();
         try {
             URL url = new URL(API_BASE_URL + endpoint);
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+            conn.setRequestProperty("Authorization", "Bearer " + token);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(5000);

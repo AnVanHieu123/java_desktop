@@ -1,7 +1,10 @@
 package com.javaadv.Controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.javaadv.Model.Order;
 import com.javaadv.SceneManager;
+import com.javaadv.SessionManager;
 import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -18,14 +21,12 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -34,10 +35,10 @@ import java.util.Map;
 
 public class OrderController {
 
-    // Thay thế bằng token mới nhất từ Postman
-    private static final String TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aHVhdmFuYW4yMDRAZ21haWwuY29tIiwiaWF0IjoxNzQ4MDg5NjMxLCJleHAiOjE3NDk1Mjk2MzF9.pg0xxGoUuG0WBreYZjsYbHdz3GSnexunzz4sasrllQ0";
     private static final String BASE_URL = "http://localhost:8081/api/admin/orders";
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HttpClient httpClient;
+    private static final List<String> VALID_STATUSES = Arrays.asList("PENDING", "CONFIRMED", "PREPARING", "PROCESSING", "DELIVERING", "DELIVERED", "CANCELLED");
 
     @FXML private Button btnOverview;
     @FXML private Button btnUserManagement;
@@ -69,11 +70,15 @@ public class OrderController {
     @FXML private TextField txtSearch;
 
     private ObservableList<Order> orderList = FXCollections.observableArrayList();
-    private static final List<String> VALID_STATUSES = Arrays.asList("PENDING", "CONFIRMED", "PREPARING", "PROCESSING", "DELIVERING", "DELIVERED", "CANCELLED");
+
+    public OrderController() {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(10))
+                .build();
+    }
 
     @FXML
     public void initialize() {
-        // Cấu hình các cột trong TableView
         colId.setCellValueFactory(new PropertyValueFactory<>("id"));
         colOrderCode.setCellValueFactory(new PropertyValueFactory<>("orderCode"));
         colTotalPrice.setCellValueFactory(new PropertyValueFactory<>("totalPrice"));
@@ -84,7 +89,6 @@ public class OrderController {
         colCreatedAt.setCellValueFactory(new PropertyValueFactory<>("createdAt"));
         colUpdatedAt.setCellValueFactory(new PropertyValueFactory<>("updatedAt"));
 
-        // Đặt các trường chỉ đọc
         txtId.setEditable(false);
         txtOrderCode.setEditable(false);
         txtTotalPrice.setEditable(false);
@@ -94,13 +98,11 @@ public class OrderController {
         txtCreatedAt.setEditable(false);
         txtUpdatedAt.setEditable(false);
 
-        // Khởi tạo ComboBox
         statusCombo.setItems(FXCollections.observableArrayList(VALID_STATUSES));
 
         setupSearchFunctionality();
         fetchOrderList();
 
-        // Listener để hiển thị chi tiết khi chọn đơn hàng
         orderTable.getSelectionModel().selectedItemProperty().addListener(
                 (observable, oldValue, newValue) -> showOrderDetails(newValue));
     }
@@ -108,46 +110,54 @@ public class OrderController {
     private void fetchOrderList() {
         new Thread(() -> {
             try {
-                String apiUrl = BASE_URL + "/list";
-                URL url = new URL(apiUrl);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
-                conn.setRequestProperty("Accept", "application/json");
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                    return;
+                }
 
-                int responseCode = conn.getResponseCode();
-                if (responseCode == 200) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder response = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        response.append(line);
-                    }
-                    reader.close();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(BASE_URL + "/list"))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Accept", "application/json")
+                        .GET()
+                        .timeout(java.time.Duration.ofSeconds(5))
+                        .build();
 
-                    JsonNode root = objectMapper.readTree(response.toString());
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    JsonNode root = objectMapper.readTree(response.body());
                     JsonNode data = root.path("data");
                     JsonNode items = data.path("items");
                     List<Order> orders = objectMapper.convertValue(items, new com.fasterxml.jackson.core.type.TypeReference<List<Order>>(){});
                     Platform.runLater(() -> {
                         orderList.clear();
                         if (items.isMissingNode() || data.isMissingNode()) {
-                            showAlert("Lỗi", "Dữ liệu từ API không hợp lệ.");
+                            showAlert(Alert.AlertType.ERROR, "Lỗi", "Dữ liệu từ API không hợp lệ.");
                         } else if (orders != null) {
                             orderList.addAll(orders);
                             orderTable.setItems(orderList);
                             if (orders.isEmpty()) {
-                                showAlert("Thông báo", "Không có đơn hàng nào.");
+                                showAlert(Alert.AlertType.INFORMATION, "Thông báo", "Không có đơn hàng nào.");
                             }
                         }
                     });
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
                 } else {
-                    Platform.runLater(() -> showAlert("Lỗi", "Không thể lấy danh sách đơn hàng: HTTP " + responseCode));
+                    Map<String, Object> errorMap = objectMapper.readValue(response.body(), Map.class);
+                    String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải dữ liệu: " + message + " (Mã lỗi: " + response.statusCode() + ")"));
                 }
-                conn.disconnect();
             } catch (Exception e) {
-                Platform.runLater(() -> showAlert("Lỗi", "Lỗi khi lấy danh sách đơn hàng: " + e.getMessage()));
-                e.printStackTrace();
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server: " + e.getMessage()));
             }
         }).start();
     }
@@ -195,101 +205,86 @@ public class OrderController {
     private void updateOrder() {
         Order selectedOrder = orderTable.getSelectionModel().getSelectedItem();
         if (selectedOrder == null) {
-            showAlert("Cảnh báo", "Vui lòng chọn một đơn hàng để cập nhật.");
+            showAlert(Alert.AlertType.WARNING, "Cảnh báo", "Vui lòng chọn một đơn hàng để cập nhật.");
             return;
         }
 
         String newStatus = statusCombo.getValue();
         if (newStatus == null || newStatus.trim().isEmpty()) {
-            showAlert("Cảnh báo", "Vui lòng chọn trạng thái mới.");
+            showAlert(Alert.AlertType.WARNING, "Cảnh báo", "Vui lòng chọn trạng thái mới.");
             return;
         }
         if (!VALID_STATUSES.contains(newStatus)) {
-            showAlert("Lỗi", "Trạng thái không hợp lệ. Vui lòng chọn một trạng thái từ danh sách.");
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Trạng thái không hợp lệ. Vui lòng chọn một trạng thái từ danh sách.");
             return;
         }
 
         try {
-            // Chuẩn bị dữ liệu gửi lên API (chỉ gửi status)
             Map<String, String> updateData = new HashMap<>();
-            updateData.put("status", newStatus.toLowerCase()); // API yêu cầu chữ thường
+            updateData.put("status", newStatus.toLowerCase());
 
-            // Gửi yêu cầu POST trực tiếp
             String apiUrl = BASE_URL + "/status/" + selectedOrder.getId();
             executeApiCall("POST", apiUrl, updateData, "Cập nhật trạng thái đơn hàng thành công!");
         } catch (Exception e) {
-            showAlert("Lỗi", "Lỗi khi cập nhật trạng thái đơn hàng: " + e.getMessage());
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi khi cập nhật trạng thái đơn hàng: " + e.getMessage());
         }
     }
 
     private void executeApiCall(String method, String urlStr, Object data, String successMessage) {
         new Thread(() -> {
             try {
-                URL url = new URL(urlStr);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod(method);
-                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Accept", "application/json");
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                    return;
+                }
+
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                        .uri(URI.create(urlStr))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json")
+                        .timeout(java.time.Duration.ofSeconds(5));
 
                 if (data != null) {
-                    conn.setDoOutput(true);
-                    try (OutputStream os = conn.getOutputStream()) {
-                        os.write(objectMapper.writeValueAsBytes(data));
-                    }
-                }
-
-                int code = conn.getResponseCode();
-                String responseMessage = "";
-                if (code >= 400) {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()))) {
-                        StringBuilder response = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            response.append(line);
-                        }
-                        responseMessage = response.toString();
-                    } catch (Exception e) {
-                        responseMessage = "Lỗi không xác định: " + e.getMessage();
-                    }
+                    String jsonBody = objectMapper.writeValueAsString(data);
+                    requestBuilder.method(method, HttpRequest.BodyPublishers.ofString(jsonBody));
                 } else {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                        StringBuilder response = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            response.append(line);
-                        }
-                        responseMessage = response.toString();
-                    }
+                    requestBuilder.method(method, HttpRequest.BodyPublishers.noBody());
                 }
 
-                conn.disconnect();
+                HttpRequest request = requestBuilder.build();
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                final String finalResponseMessage = responseMessage;
-                Platform.runLater(() -> {
-                    if (code == 200) {
-                        showAlert("Thành công", successMessage);
+                if (response.statusCode() == 200 || response.statusCode() == 201) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.INFORMATION, "Thành công", successMessage);
                         fetchOrderList();
                         clearFields();
-                    } else {
-                        String errorMsg = "Thao tác thất bại. Mã lỗi: " + code;
-                        if (!finalResponseMessage.isEmpty()) {
-                            try {
-                                JsonNode errorJson = objectMapper.readTree(finalResponseMessage);
-                                String detailedMessage = errorJson.path("message").asText("Không có thông tin chi tiết.");
-                                errorMsg += "\nChi tiết: " + detailedMessage;
-                            } catch (Exception e) {
-                                errorMsg += "\nChi tiết: " + finalResponseMessage;
-                            }
-                        }
-                        showAlert("Lỗi", errorMsg);
-                    }
-                });
+                    });
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                } else {
+                    Map<String, Object> errorMap = objectMapper.readValue(response.body(), Map.class);
+                    String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Thao tác thất bại: " + message + " (Mã lỗi: " + response.statusCode() + ")"));
+                }
             } catch (Exception e) {
-                Platform.runLater(() -> showAlert("Lỗi", "Không thể kết nối đến server: " + e.getMessage()));
-                e.printStackTrace();
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server: " + e.getMessage()));
             }
         }).start();
+    }
+
+    private void redirectToLogin() {
+        Stage stage = (Stage) orderTable.getScene().getWindow();
+        SceneManager.changeScene(stage, "/com/fxml/Login.fxml", "Đăng nhập");
+        SessionManager.getInstance().clearSession();
     }
 
     @FXML
@@ -310,11 +305,17 @@ public class OrderController {
         txtUpdatedAt.clear();
     }
 
-    private void showAlert(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.WARNING);
+    private void showAlert(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type);
         alert.setTitle(title);
         alert.setHeaderText(null);
         alert.setContentText(message);
+        String bgColor = switch (type) {
+            case ERROR -> "#f8d7da";
+            case WARNING -> "#fff3cd";
+            default -> "#d4edda";
+        };
+        alert.getDialogPane().setStyle("-fx-background-color: " + bgColor + "; -fx-border-radius: 5;");
         alert.showAndWait();
     }
 
@@ -332,7 +333,7 @@ public class OrderController {
 
     @FXML
     public void handleProductManagement(ActionEvent event) {
-        Stage stage = (Stage) btnUserManagement.getScene().getWindow();
+        Stage stage = (Stage) btnProductManagement.getScene().getWindow();
         SceneManager.changeScene(stage, "/com/fxml/ProductManagement.fxml", "Quản lý Sản phẩm");
     }
 
@@ -343,29 +344,32 @@ public class OrderController {
     }
 
     @FXML
-    public void handleLogout(ActionEvent event) throws java.io.IOException {
-        Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
-        FadeTransition fadeOut = new FadeTransition(Duration.seconds(0.5), stage.getScene().getRoot());
-        fadeOut.setFromValue(1.0);
-        fadeOut.setToValue(0.0);
-        fadeOut.setOnFinished(e -> {
-            try {
-                FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/fxml/Login.fxml"));
-                Parent root = loader.load();
-                Scene scene = new Scene(root, 825, 400);
+    public void handleLogout(ActionEvent event) {
+        if (new Alert(Alert.AlertType.CONFIRMATION, "Bạn có chắc chắn muốn đăng xuất?", ButtonType.YES, ButtonType.NO)
+                .showAndWait().orElse(ButtonType.NO) == ButtonType.YES) {
+            Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
+            FadeTransition fadeOut = new FadeTransition(Duration.seconds(0.5), stage.getScene().getRoot());
+            fadeOut.setFromValue(1.0);
+            fadeOut.setToValue(0.0);
+            fadeOut.setOnFinished(e -> {
+                try {
+                    FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/fxml/Login.fxml"));
+                    Parent root = loader.load();
+                    Scene scene = new Scene(root, 825, 400);
+                    stage.setTitle("ADMIN SYSTEM");
+                    stage.setScene(scene);
+                    stage.centerOnScreen();
 
-                stage.setTitle("ADMIN SYSTEM");
-                stage.setScene(scene);
-                stage.centerOnScreen();
-
-                FadeTransition fadeIn = new FadeTransition(Duration.seconds(0.25), scene.getRoot());
-                fadeIn.setFromValue(0.0);
-                fadeIn.setToValue(1.0);
-                fadeIn.play();
-            } catch (java.io.IOException ex) {
-                ex.printStackTrace();
-            }
-        });
-        fadeOut.play();
+                    FadeTransition fadeIn = new FadeTransition(Duration.seconds(0.25), scene.getRoot());
+                    fadeIn.setFromValue(0.0);
+                    fadeIn.setToValue(1.0);
+                    fadeIn.play();
+                    SessionManager.getInstance().clearSession();
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            });
+            fadeOut.play();
+        }
     }
 }

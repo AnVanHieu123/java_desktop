@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javaadv.Model.ApiResponse;
 import com.javaadv.Model.User;
 import com.javaadv.SceneManager;
+import com.javaadv.Services.AuthService;
+import com.javaadv.SessionManager;
 import javafx.animation.FadeTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -23,15 +25,16 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -59,7 +62,7 @@ public class UserController implements Initializable {
     @FXML private TextField txtPhone;
     @FXML private TextField txtStatus;
     @FXML private TextField txtAddress;
-    @FXML private TextField txtRole;
+    @FXML private ComboBox<String> roleCombo;
     @FXML private Button btnAdd;
     @FXML private Button btnUpdate;
     @FXML private Button btnDelete;
@@ -68,9 +71,17 @@ public class UserController implements Initializable {
 
     private final ObservableList<User> userList = FXCollections.observableArrayList();
     private User selectedUser = null;
-    private static final String API_BASE_URL = "http://localhost:8081"; // Đúng với Swagger UI
-    private String TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aHVhdmFuYW4yMDRAZ21haWwuY29tIiwiaWF0IjoxNzQ2Nzk1OTI4LCJleHAiOjE3NDgyMzU5Mjh9.lG-2UxVRmiFqK6jfg16HyIhFcT3fq2TYLJPLyOVJ7OI"; // Gán token từ Postman vào đây
+    private static final String API_BASE_URL = "http://localhost:8081";
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HttpClient httpClient;
+    private final AuthService authService;
+
+    public UserController() {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(10))
+                .build();
+        this.authService = new AuthService();
+    }
 
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
@@ -81,6 +92,12 @@ public class UserController implements Initializable {
         setupSearchListener();
         btnStatistics.setOnAction(e -> showStatistics());
         userTable.setOnMouseClicked(this::handleTableClick);
+        setupRoleCombo();
+    }
+
+    private void setupRoleCombo() {
+        roleCombo.getItems().addAll("admin" , "customer");
+        roleCombo.setPromptText("admin / customer ");
     }
 
     private void setupSearchListener() {
@@ -133,68 +150,56 @@ public class UserController implements Initializable {
     private void loadUsersFromAPI() {
         new Thread(() -> {
             int retries = 3;
-            int timeout = 5000; // 5 giây
             for (int attempt = 1; attempt <= retries; attempt++) {
                 try {
-                    System.out.println("Thử lần " + attempt + " - Gọi API tại: " + API_BASE_URL + "/api/admin/users/list?pageNo=1&pageSize=10&sorts=fullName:desc");
-                    System.out.println("Token: " + TOKEN);
+                    String token = SessionManager.getInstance().getAccessToken();
+                    if (token == null) {
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại."));
+                        return;
+                    }
 
-                    URL url = new URL(API_BASE_URL + "/api/admin/users/list?pageNo=1&pageSize=10&sorts=fullName:desc");
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
-                    conn.setRequestProperty("Content-Type", "application/json");
-                    conn.setConnectTimeout(timeout);
-                    conn.setReadTimeout(timeout);
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(API_BASE_URL + "/api/admin/users/list?pageNo=1&pageSize=10&sorts=fullName:desc"))
+                            .header("Authorization", "Bearer " + token)
+                            .header("Content-Type", "application/json")
+                            .GET()
+                            .timeout(java.time.Duration.ofSeconds(5))
+                            .build();
 
-                    int responseCode = conn.getResponseCode();
-                    System.out.println("Mã phản hồi: " + responseCode);
+                    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                    if (responseCode == 200) {
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                        StringBuilder response = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            response.append(line);
-                        }
-                        reader.close();
-                        System.out.println("Phản hồi API: " + response.toString());
-
-                        // Deserialize thành ApiResponse
-                        ApiResponse apiResponse = objectMapper.readValue(response.toString(), ApiResponse.class);
+                    if (response.statusCode() == 200) {
+                        ApiResponse apiResponse = objectMapper.readValue(response.body(), ApiResponse.class);
                         List<User> users = apiResponse.getData().getItems();
 
                         Platform.runLater(() -> {
                             userList.clear();
                             userList.addAll(users);
                             userTable.refresh();
-                            // Thêm log để kiểm tra dữ liệu trong userList
-                            System.out.println("Số lượng người dùng trong userList: " + userList.size());
-                            userList.forEach(user -> System.out.println("User: " + user.getId() + ", FullName: " + user.getFullName() + ", Email: " + user.getEmail()));
                         });
-                        break; // Thoát vòng lặp nếu thành công
+                        break;
+                    } else if (response.statusCode() == 401) {
+                        Platform.runLater(() -> {
+                            showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                            redirectToLogin();
+                        });
+                        break;
                     } else {
-                        BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-                        StringBuilder errorResponse = new StringBuilder();
-                        String errorLine;
-                        while ((errorLine = errorReader.readLine()) != null) {
-                            errorResponse.append(errorLine);
-                        }
-                        errorReader.close();
-                        System.out.println("Phản hồi lỗi: " + errorResponse.toString());
-
-                        Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                        Map<String, Object> errorMap = objectMapper.readValue(response.body(), Map.class);
                         String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
-                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải dữ liệu: " + message + " (Mã lỗi: " + responseCode + ")"));
+                        String errorLog = String.format("[%s] Lỗi tải dữ liệu: %s (Mã lỗi: %d)", LocalDateTime.now(), message, response.statusCode());
+                        System.out.println(errorLog);
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải dữ liệu: " + message + " (Mã lỗi: " + response.statusCode() + ")"));
                         break;
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
                     if (attempt == retries) {
+                        String errorLog = String.format("[%s] Không thể kết nối đến server sau %d lần thử: %s", LocalDateTime.now(), retries, e.getMessage());
+                        System.out.println(errorLog);
                         Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server sau " + retries + " lần thử: " + e.getMessage()));
                     }
                     try {
-                        Thread.sleep(2000); // Chờ 2 giây trước khi thử lại
+                        Thread.sleep(2000);
                     } catch (InterruptedException ie) {
                         ie.printStackTrace();
                     }
@@ -293,80 +298,151 @@ public class UserController implements Initializable {
         btnUpdate.setOnAction(this::handleEdit);
         btnDelete.setOnAction(this::handleDelete);
     }
-@FXML
-    private void handleAdd(ActionEvent event) {
-        try {
-            User newUser = new User(
-                    Integer.parseInt(txtId.getText().trim()),
-                    txtFullName.getText().trim(),
-                    txtEmail.getText().trim(),
-                    txtPhone.getText().trim(),
-                    txtStatus.getText().trim(),
-                    txtAddress.getText().trim(),
-                    txtRole.getText().trim(),
-                    "2025-05-24 08:25:00", // Thời gian hiện tại
-                    "2025-05-24 08:25:00"
-            );
 
-            addUserToAPI(newUser);
-            clearFields();
-        } catch (Exception e) {
-            showAlert(Alert.AlertType.ERROR, "Lỗi", "Thêm người dùng thất bại: " + e.getMessage());
-        }
+    @FXML
+    private void handleAdd(ActionEvent event) {
+        Stage addUserStage = new Stage();
+        addUserStage.initModality(Modality.APPLICATION_MODAL);
+        addUserStage.setTitle("Thêm người dùng mới");
+
+        VBox formLayout = new VBox(10);
+        formLayout.setPadding(new Insets(15));
+        formLayout.setStyle("-fx-background-color: #f8f9fa;");
+
+        TextField fullNameField = new TextField();
+        fullNameField.setPromptText("Họ và tên");
+        TextField emailField = new TextField();
+        emailField.setPromptText("Email");
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText("Mật khẩu");
+        TextField phoneField = new TextField();
+        phoneField.setPromptText("Số điện thoại");
+        TextField addressField = new TextField();
+        addressField.setPromptText("Địa chỉ");
+        ComboBox<String> statusCombo = new ComboBox<>();
+        statusCombo.getItems().addAll("active", "inactive");
+        statusCombo.setPromptText("Trạng thái");
+        ComboBox<String> roleCombo = new ComboBox<>();
+        roleCombo.getItems().addAll("admin" , "customer");
+        roleCombo.setPromptText("admin / customer ");
+
+        Button submitButton = new Button("Thêm");
+        Button cancelButton = new Button("Hủy");
+        HBox buttonBox = new HBox(10, submitButton, cancelButton);
+        buttonBox.setAlignment(Pos.CENTER);
+
+        formLayout.getChildren().addAll(
+                new Label("THÊM NGƯỜI DÙNG") {{
+                    setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
+                }},
+                fullNameField, emailField, passwordField, phoneField, addressField, statusCombo, roleCombo, buttonBox
+        );
+
+        submitButton.setOnAction(e -> {
+            try {
+                String fullName = fullNameField.getText().trim();
+                String email = emailField.getText().trim();
+                String password = passwordField.getText().trim();
+                String phone = phoneField.getText().trim();
+                String address = addressField.getText().trim();
+                String status = statusCombo.getValue();
+                String role = roleCombo.getValue();
+
+                // Kiểm tra các trường bắt buộc
+                if (fullName.isEmpty() || email.isEmpty() || password.isEmpty() || phone.isEmpty() ||
+                        address.isEmpty() || status == null || role == null) {
+                    showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng điền đầy đủ các trường!");
+                    return;
+                }
+
+                // Kiểm tra độ dài tối thiểu của mật khẩu
+                if (password.length() < 6) {
+                    showAlert(Alert.AlertType.ERROR, "Lỗi", "Mật khẩu phải có ít nhất 6 ký tự!");
+                    return;
+                }
+
+                User newUser = new User();
+                newUser.setFullName(fullName);
+                newUser.setEmail(email);
+                newUser.setPassword(password);
+                newUser.setPhone(phone);
+                newUser.setAddress(address);
+                newUser.setStatus(status);
+                newUser.setRole(role);
+                newUser.setCreatedAt("2025-05-24 08:25:00");
+                newUser.setUpdatedAt("2025-05-24 08:25:00");
+
+                addUserToAPI(newUser);
+                addUserStage.close();
+            } catch (Exception ex) {
+                String errorLog = String.format("[%s] Lỗi khi thêm người dùng: %s", LocalDateTime.now(), ex.getMessage());
+                System.out.println(errorLog);
+                showAlert(Alert.AlertType.ERROR, "Lỗi", "Thêm người dùng thất bại: " + ex.getMessage());
+            }
+        });
+
+        cancelButton.setOnAction(e -> addUserStage.close());
+
+        Scene scene = new Scene(formLayout, 400, 450);
+        addUserStage.setScene(scene);
+        addUserStage.showAndWait();
     }
-@FXML
+
     private void addUserToAPI(User user) {
         new Thread(() -> {
             try {
-                String jsonBody = objectMapper.writeValueAsString(user);
-                URL url = new URL(API_BASE_URL + "/api/admin/users");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setDoOutput(true);
-
-                try (OutputStream os = conn.getOutputStream()) {
-                    byte[] input = jsonBody.getBytes("utf-8");
-                    os.write(input, 0, input.length);
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                    return;
                 }
 
-                int responseCode = conn.getResponseCode();
-                if (responseCode == 200) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder response = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        response.append(line);
-                    }
-                    reader.close();
+                // Ghi log JSON body để kiểm tra dữ liệu gửi lên
+                String jsonBody = objectMapper.writeValueAsString(user);
+                System.out.println("JSON body gửi lên API: " + jsonBody);
 
-                    User addedUser = objectMapper.readValue(response.toString(), User.class);
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(API_BASE_URL + "/api/admin/users"))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .timeout(java.time.Duration.ofSeconds(5))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    User addedUser = objectMapper.readValue(response.body(), User.class);
                     Platform.runLater(() -> {
                         userList.add(addedUser);
                         userTable.refresh();
-                        showAlert(Alert.AlertType.ERROR, "Thành công", "Thêm người dùng thành công!");
+                        showAlert(Alert.AlertType.INFORMATION, "Thành công", "Thêm người dùng thành công!");
+                    });
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
                     });
                 } else {
-                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-                    StringBuilder errorResponse = new StringBuilder();
-                    String errorLine;
-                    while ((errorLine = errorReader.readLine()) != null) {
-                        errorResponse.append(errorLine);
-                    }
-                    errorReader.close();
-
-                    Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                    Map<String, Object> errorMap = objectMapper.readValue(response.body(), Map.class);
                     String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
-                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Thêm người dùng thất bại: " + message + " (Mã lỗi: " + responseCode + ")"));
+                    String errorLog = String.format("[%s] Thêm người dùng thất bại: %s (Mã lỗi: %d)", LocalDateTime.now(), message, response.statusCode());
+                    System.out.println(errorLog);
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Thêm người dùng thất bại: " + message + " (Mã lỗi: " + response.statusCode() + ")"));
                 }
-                conn.disconnect();
             } catch (Exception e) {
+                String errorLog = String.format("[%s] Lỗi khi gọi API thêm người dùng: %s", LocalDateTime.now(), e.getMessage());
+                System.out.println(errorLog);
                 Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi khi gọi API: " + e.getMessage()));
             }
         }).start();
     }
-@FXML
+
+
+    @FXML
     private void handleEdit(ActionEvent event) {
         if (selectedUser == null) {
             showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng chọn người dùng để sửa!");
@@ -379,12 +455,19 @@ public class UserController implements Initializable {
             selectedUser.setPhone(txtPhone.getText().trim());
             selectedUser.setStatus(txtStatus.getText().trim());
             selectedUser.setAddress(txtAddress.getText().trim());
-            selectedUser.setRole(txtRole.getText().trim());
+            selectedUser.setRole(roleCombo.getValue());
             selectedUser.setUpdatedAt("2025-05-24 08:25:00");
+
+            if (selectedUser.getRole() == null) {
+                showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng chọn vai trò!");
+                return;
+            }
 
             updateUserInAPI(selectedUser);
             clearFields();
         } catch (Exception e) {
+            String errorLog = String.format("[%s] Lỗi khi cập nhật người dùng: %s", LocalDateTime.now(), e.getMessage());
+            System.out.println(errorLog);
             showAlert(Alert.AlertType.ERROR, "Lỗi", "Cập nhật người dùng thất bại: " + e.getMessage());
         }
     }
@@ -392,51 +475,49 @@ public class UserController implements Initializable {
     private void updateUserInAPI(User user) {
         new Thread(() -> {
             try {
-                String jsonBody = objectMapper.writeValueAsString(user);
-                URL url = new URL(API_BASE_URL + "/api/admin/users/" + user.getId());
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("PUT");
-                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setDoOutput(true);
-
-                try (OutputStream os = conn.getOutputStream()) {
-                    byte[] input = jsonBody.getBytes("utf-8");
-                    os.write(input, 0, input.length);
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                    return;
                 }
 
-                int responseCode = conn.getResponseCode();
-                if (responseCode == 200) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder response = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        response.append(line);
-                    }
-                    reader.close();
+                String jsonBody = objectMapper.writeValueAsString(user);
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(API_BASE_URL + "/api/admin/users/" + user.getId()))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .timeout(java.time.Duration.ofSeconds(5))
+                        .build();
 
-                    User updatedUser = objectMapper.readValue(response.toString(), User.class);
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    User updatedUser = objectMapper.readValue(response.body(), User.class);
                     Platform.runLater(() -> {
                         int index = userList.indexOf(selectedUser);
                         userList.set(index, updatedUser);
                         userTable.refresh();
-                        showAlert(Alert.AlertType.ERROR, "Thành công", "Cập nhật người dùng thành công!");
+                        showAlert(Alert.AlertType.INFORMATION, "Thành công", "Cập nhật người dùng thành công!");
+                    });
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
                     });
                 } else {
-                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-                    StringBuilder errorResponse = new StringBuilder();
-                    String errorLine;
-                    while ((errorLine = errorReader.readLine()) != null) {
-                        errorResponse.append(errorLine);
-                    }
-                    errorReader.close();
-
-                    Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                    Map<String, Object> errorMap = objectMapper.readValue(response.body(), Map.class);
                     String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
-                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Cập nhật người dùng thất bại: " + message + " (Mã lỗi: " + responseCode + ")"));
+                    String errorLog = String.format("[%s] Cập nhật người dùng thất bại: %s (Mã lỗi: %d)", LocalDateTime.now(), message, response.statusCode());
+                    System.out.println(errorLog);
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Cập nhật người dùng thất bại: " + message + " (Mã lỗi: " + response.statusCode() + ")"));
                 }
-                conn.disconnect();
             } catch (Exception e) {
+                String errorLog = String.format("[%s] Lỗi khi gọi API cập nhật người dùng: %s", LocalDateTime.now(), e.getMessage());
+                System.out.println(errorLog);
                 Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi khi gọi API: " + e.getMessage()));
             }
         }).start();
@@ -464,37 +545,55 @@ public class UserController implements Initializable {
     private void deleteUserFromAPI(int userId) {
         new Thread(() -> {
             try {
-                URL url = new URL(API_BASE_URL + "/api/admin/users/delete/" + userId);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("DELETE");
-                conn.setRequestProperty("Authorization", "Bearer " + TOKEN);
-                conn.setRequestProperty("Content-Type", "application/json");
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                    return;
+                }
 
-                int responseCode = conn.getResponseCode();
-                if (responseCode == 200) {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(API_BASE_URL + "/api/admin/users/delete/" + userId))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .DELETE()
+                        .timeout(java.time.Duration.ofSeconds(5))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
                     Platform.runLater(() -> {
                         userList.removeIf(user -> user.getId() == userId);
                         userTable.refresh();
-                        showAlert(Alert.AlertType.ERROR, "Thành công", "Đã xóa người dùng thành công");
+                        showAlert(Alert.AlertType.INFORMATION, "Thành công", "Đã xóa người dùng thành công");
+                    });
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
                     });
                 } else {
-                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-                    StringBuilder errorResponse = new StringBuilder();
-                    String errorLine;
-                    while ((errorLine = errorReader.readLine()) != null) {
-                        errorResponse.append(errorLine);
-                    }
-                    errorReader.close();
-
-                    Map<String, Object> errorMap = objectMapper.readValue(errorResponse.toString(), Map.class);
+                    Map<String, Object> errorMap = objectMapper.readValue(response.body(), Map.class);
                     String message = errorMap.getOrDefault("message", "Không có thông báo lỗi").toString();
-                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Xóa người dùng thất bại: " + message + " (Mã lỗi: " + responseCode + ")"));
+                    String errorLog = String.format("[%s] Xóa người dùng thất bại: %s (Mã lỗi: %d)", LocalDateTime.now(), message, response.statusCode());
+                    System.out.println(errorLog);
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Xóa người dùng thất bại: " + message + " (Mã lỗi: " + response.statusCode() + ")"));
                 }
-                conn.disconnect();
             } catch (Exception e) {
+                String errorLog = String.format("[%s] Lỗi khi gọi API xóa người dùng: %s", LocalDateTime.now(), e.getMessage());
+                System.out.println(errorLog);
                 Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Lỗi khi gọi API: " + e.getMessage()));
             }
         }).start();
+    }
+
+    private void redirectToLogin() {
+        Stage stage = (Stage) userTable.getScene().getWindow();
+        SceneManager.changeScene(stage, "/com/fxml/Login.fxml", "Đăng nhập");
+        SessionManager.getInstance().clearSession();
     }
 
     @FXML
@@ -536,7 +635,7 @@ public class UserController implements Initializable {
             txtPhone.setText(user.getPhone() != null ? user.getPhone() : "");
             txtStatus.setText(user.getStatus() != null ? user.getStatus() : "");
             txtAddress.setText(user.getAddress() != null ? user.getAddress() : "");
-            txtRole.setText(user.getRole() != null ? user.getRole() : "");
+            roleCombo.setValue(user.getRole() != null ? user.getRole() : null);
 
             txtFullName.requestFocus();
         });
@@ -550,12 +649,12 @@ public class UserController implements Initializable {
         txtPhone.setText("");
         txtStatus.setText("");
         txtAddress.setText("");
-        txtRole.setText("");
+        roleCombo.setValue(null);
         selectedUser = null;
     }
 
-    private void showAlert(Alert.AlertType error, String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
+    private void showAlert(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type);
         alert.setTitle(title);
         alert.setHeaderText(null);
         alert.setContentText(message);
@@ -566,12 +665,6 @@ public class UserController implements Initializable {
     public void handleOverview(ActionEvent event) {
         Stage stage = (Stage) btnUserManagement.getScene().getWindow();
         SceneManager.changeScene(stage, "/com/fxml/Dashboard.fxml", "Quản lý người dùng");
-    }
-
-    @FXML
-    public void handleProductManagement(ActionEvent event) {
-        Stage stage = (Stage) btnUserManagement.getScene().getWindow();
-        SceneManager.changeScene(stage, "/com/fxml/ProductManagement.fxml", "Quản lý sản phẩm");
     }
 
     @FXML
@@ -592,11 +685,18 @@ public class UserController implements Initializable {
                 fadeIn.setFromValue(0.0);
                 fadeIn.setToValue(1.0);
                 fadeIn.play();
+                SessionManager.getInstance().clearSession();
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
         });
         fadeOut.play();
+    }
+
+    @FXML
+    public void handleProductManagement(ActionEvent event) {
+        Stage stage = (Stage) btnUserManagement.getScene().getWindow();
+        SceneManager.changeScene(stage, "/com/fxml/ProductManagement.fxml", "Quản lý sản phẩm");
     }
 
     @FXML

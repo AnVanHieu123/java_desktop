@@ -3,31 +3,42 @@ package com.javaadv.Controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.javaadv.Model.Category;
 import com.javaadv.Model.Product;
 import com.javaadv.SceneManager;
+import com.javaadv.SessionManager;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
+import java.io.File;
+import java.net.URI;
 import java.net.URL;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.text.NumberFormat;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static jdk.internal.classfile.impl.DirectCodeBuilder.build;
 
 public class ProductController implements Initializable {
 
@@ -60,6 +71,7 @@ public class ProductController implements Initializable {
     @FXML private TableColumn<Product, String> colStatus;
 
     // FXML Components - Detail Form
+    @FXML private VBox detailForm;
     @FXML private Label formTitle;
     @FXML private ImageView productImageView;
     @FXML private Label idLabel;
@@ -69,6 +81,7 @@ public class ProductController implements Initializable {
     @FXML private TextField stockField;
     @FXML private TextField discountField;
     @FXML private TextField imageUrlField;
+    @FXML private Button uploadButton;
     @FXML private TextField sizeField;
     @FXML private TextArea descArea;
     @FXML private Label statusLabel;
@@ -79,12 +92,20 @@ public class ProductController implements Initializable {
     // Data and Configuration
     private final ObservableList<Product> productList = FXCollections.observableArrayList();
     private final NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(new Locale("vi", "VN"));
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule());
     private final String BASE_URL = "http://localhost:8081/api/admin/products";
-    private final String accessToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0aHVhdmFuYW4yMDRAZ21haWwuY29tIiwiaWF0IjoxNzQ2ODI4Mzk3LCJleHAiOjE3NDgyNjgzOTd9.WDA-xfxLOuptav0WLNW0dl-wcU2Cn3EtGwrmz9yc61c";
-
+    private final HttpClient httpClient;
     private Product selectedProduct;
     private boolean isEditMode = false;
+    private File selectedImageFile;
+    private Map<String, Integer> categoryNameToId = new HashMap<>();
+
+    public ProductController() {
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+    }
 
     @Override
     public void initialize(URL url, ResourceBundle resourceBundle) {
@@ -94,6 +115,7 @@ public class ProductController implements Initializable {
         setupForm();
         loadProducts();
         setupImageUrlListener();
+        loadCategories();
     }
 
     // ================ TABLE SETUP ================
@@ -168,7 +190,6 @@ public class ProductController implements Initializable {
 
     private void setupCategoryFilter() {
         cmbCategory.getItems().add("Tất cả danh mục");
-        loadCategories();
         cmbCategory.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> filterProducts());
     }
 
@@ -178,9 +199,13 @@ public class ProductController implements Initializable {
     }
 
     private void setupImageUrlListener() {
-//        imageUrlField.textProperty().addListener((obs, oldText, newText) -> {
-//            loadProductImage(newText);
-//        });
+        imageUrlField.textProperty().addListener((obs, oldText, newText) -> {
+            if (newText != null && !newText.isEmpty()) {
+                loadProductImage(newText);
+            } else {
+                productImageView.setImage(null);
+            }
+        });
     }
 
     private void setupFormValidation() {
@@ -212,69 +237,183 @@ public class ProductController implements Initializable {
     // ================ DATA LOADING ================
     private void loadProducts() {
         new Thread(() -> {
-            try {
-                URL url = new URL(BASE_URL + "/list?pageNo=0");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
+            int retries = 1;
+            List<Product> allProducts = new ArrayList<>();
+            int pageNo = 0;
+            int totalPages = 0; // Sẽ được cập nhật từ phản hồi API
 
-                if (conn.getResponseCode() == 200) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder response = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        response.append(line);
+            // Lấy trang đầu tiên để xác định totalPages
+            for (int attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    String token = SessionManager.getInstance().getAccessToken();
+                    if (token == null) {
+                        Platform.runLater(() -> {
+                            showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                            redirectToLogin();
+                        });
+                        return;
                     }
-                    reader.close();
 
-                    JsonNode root = objectMapper.readTree(response.toString());
-                    JsonNode items = root.path("data").path("items");
-                    List<Product> products = objectMapper.convertValue(items, new TypeReference<List<Product>>(){});
-                    Platform.runLater(() -> {
-                        productList.setAll(products);
-                        updateTableInfo();
-                    });
-                } else {
-                    Platform.runLater(() -> {
-                        try {
-                            showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải dữ liệu. Mã lỗi: " + conn.getResponseCode());
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(BASE_URL + "/list?sortBy=id:desc&pageNo=" + pageNo))
+                            .header("Authorization", "Bearer " + token)
+                            .header("Content-Type", "application/json")
+                            .GET()
+                            .timeout(Duration.ofSeconds(5))
+                            .build();
+
+                    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+
+                    if (response.statusCode() == 200) {
+                        JsonNode root = objectMapper.readTree(response.body());
+                        JsonNode data = root.path("data");
+                        totalPages = data.path("totalPage").asInt(); // Lấy totalPage từ phản hồi
+                        JsonNode items = data.path("items");
+                        List<Product> products = objectMapper.convertValue(items, new TypeReference<List<Product>>(){});
+                        allProducts.addAll(products);
+                        break; // Thoát vòng lặp sau khi lấy trang đầu tiên
+                    } else if (response.statusCode() == 401) {
+                        Platform.runLater(() -> {
+                            showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                            redirectToLogin();
+                        });
+                        return;
+                    } else {
+                        final String errorMessage = response.body();
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải dữ liệu. Mã lỗi: " + response.statusCode() + "\nChi tiết: " + errorMessage));
+                        return;
+                    }
+                } catch (Exception e) {
+                    if (attempt == retries) {
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server sau " + retries + " lần thử: " + e.getMessage()));
+                    }
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException ie) {
+                        ie.printStackTrace();
+                    }
                 }
-                conn.disconnect();
-            } catch (Exception e) {
-                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server: " + e.getMessage()));
             }
+
+            // Lặp qua các trang còn lại (từ pageNo=1 đến totalPages-1)
+            while (pageNo < totalPages - 1) {
+                pageNo++;
+                for (int attempt = 1; attempt <= retries; attempt++) {
+                    try {
+                        String token = SessionManager.getInstance().getAccessToken();
+                        HttpRequest request = HttpRequest.newBuilder()
+                                .uri(URI.create(BASE_URL + "/list?sortBy=id:desc&pageNo=" + pageNo))
+                                .header("Authorization", "Bearer " + token)
+                                .header("Content-Type", "application/json")
+                                .GET()
+                                .timeout(Duration.ofSeconds(5))
+                                .build();
+
+                        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                        System.out.println("Phản hồi từ API - Trang " + pageNo + ": Status: " + response.statusCode() + ", Body: " + response.body());
+
+                        if (response.statusCode() == 200) {
+                            JsonNode root = objectMapper.readTree(response.body());
+                            JsonNode data = root.path("data");
+                            JsonNode items = data.path("items");
+                            List<Product> products = objectMapper.convertValue(items, new TypeReference<List<Product>>(){});
+                            allProducts.addAll(products);
+                        } else if (response.statusCode() == 401) {
+                            Platform.runLater(() -> {
+                                showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                                redirectToLogin();
+                            });
+                            return;
+                        } else {
+                            final String errorMessage = response.body();
+                            Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải dữ liệu. Mã lỗi: " + response.statusCode() + "\nChi tiết: " + errorMessage));
+                            return;
+                        }
+                    } catch (Exception e) {
+                        if (attempt == retries) {
+                            Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server sau " + retries + " lần thử: " + e.getMessage()));
+                        }
+                        try {
+                            Thread.sleep(2000);
+                        } catch (InterruptedException ie) {
+                            ie.printStackTrace();
+                        }
+                    }
+                }
+            }
+
+            // Cập nhật giao diện sau khi lấy hết dữ liệu
+            Platform.runLater(() -> {
+                productList.setAll(allProducts);
+                updateTableInfo();
+                System.out.println("Tổng số sản phẩm đã tải: " + allProducts.size());
+            });
         }).start();
     }
 
     private void loadCategories() {
         new Thread(() -> {
             try {
-                URL url = new URL(BASE_URL + "/categories");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-
-                if (conn.getResponseCode() == 200) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder response = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        response.append(line);
-                    }
-                    reader.close();
-
-                    List<String> categories = objectMapper.readValue(response.toString(), new TypeReference<List<String>>(){});
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
                     Platform.runLater(() -> {
-                        cmbCategory.getItems().addAll(categories);
-                        categoryCombo.getItems().addAll(categories);
-                        cmbCategory.setValue("Tất cả danh mục");
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
                     });
+                    return;
                 }
-                conn.disconnect();
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("http://localhost:8081/api/admin/category/list?sort=id:desc"))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .GET()
+                        .timeout(Duration.ofSeconds(5))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                System.out.println("Category API Response: " + response.body());
+
+                if (response.statusCode() == 200) {
+                    JsonNode root = objectMapper.readTree(response.body());
+                    JsonNode data = root.path("data");
+                    JsonNode items = data.path("items");
+                    if (items.isArray()) {
+                        List<Category> categories = objectMapper.convertValue(items, new TypeReference<List<Category>>(){});
+                        System.out.println("Loaded categories: " + categories.size());
+                        List<String> categoryNames = categories.stream()
+                                .peek(category -> {
+                                    categoryNameToId.put(category.getName(), category.getId());
+                                    System.out.println("Mapping: " + category.getName() + " -> " + category.getId());
+                                })
+                                .map(Category::getName)
+                                .collect(Collectors.toList());
+                        Platform.runLater(() -> {
+                            cmbCategory.getItems().clear();
+                            categoryCombo.getItems().clear();
+                            cmbCategory.getItems().add("Tất cả danh mục");
+                            cmbCategory.getItems().addAll(categoryNames);
+                            categoryCombo.getItems().addAll(categoryNames);
+                            if (!categoryNames.isEmpty()) {
+                                categoryCombo.setValue(categoryNames.get(0));
+                                System.out.println("Default category set to: " + categoryNames.get(0));
+                            } else {
+                                System.out.println("No categories loaded!");
+                            }
+                        });
+                    } else {
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Dữ liệu danh mục không phải là mảng."));
+                    }
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                } else {
+                    final String errorMessage = response.body();
+                    Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải danh mục: Mã lỗi: " + response.statusCode() + "\nChi tiết: " + errorMessage));
+                }
             } catch (Exception e) {
                 Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể tải danh mục: " + e.getMessage()));
             }
@@ -346,27 +485,28 @@ public class ProductController implements Initializable {
 
     @FXML
     private void handleAddProduct() {
-        resetForm();
-        isEditMode = false;
-        selectedProduct = null;
-        formTitle.setText("Thêm sản phẩm mới");
-        saveBtn.setText("Thêm mới");
-        deleteBtn.setVisible(false);
-        nameField.requestFocus();
-    }
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/fxml/AddProductWindow.fxml"));
+            Parent root = loader.load();
 
-    @FXML
-    private void handleSave() {
-        if (!validateForm()) return;
+            AddProductController controller = loader.getController();
+            controller.setProductController(this);
 
-        Map<String, Object> data = createProductData();
+            Stage stage = new Stage();
+            stage.initModality(Modality.APPLICATION_MODAL);
+            stage.setTitle("Thêm sản phẩm mới");
+            stage.setScene(new Scene(root));
+            stage.setResizable(false);
 
-        if (isEditMode && selectedProduct != null) {
-            updateProduct(selectedProduct.getId(), data);
-        } else {
-            createProduct(data);
+            controller.loadCategories();
+
+            stage.showAndWait();
+        } catch (Exception e) {
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể mở cửa sổ thêm sản phẩm: " + e.getMessage());
         }
     }
+
+
 
     @FXML
     private void handleDelete() {
@@ -395,6 +535,20 @@ public class ProductController implements Initializable {
         resetForm();
     }
 
+    @FXML
+    private void handleUpload(ActionEvent event) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg"));
+        Stage stage = (Stage) uploadButton.getScene().getWindow();
+        selectedImageFile = fileChooser.showOpenDialog(stage);
+
+        if (selectedImageFile != null) {
+            imageUrlField.setText("file:" + selectedImageFile.getAbsolutePath());
+            loadProductImage("file:" + selectedImageFile.getAbsolutePath());
+            showAlert(Alert.AlertType.WARNING, "Cảnh báo", "Hiện tại API không hỗ trợ upload file. Vui lòng nhập URL ảnh vào ô này.");
+        }
+    }
+
     // ================ FORM OPERATIONS ================
     private void loadProductToForm(Product product) {
         selectedProduct = product;
@@ -411,14 +565,11 @@ public class ProductController implements Initializable {
         stockField.setText(String.valueOf(product.getStockQuantity()));
         discountField.setText(String.valueOf(product.getDiscount()));
 
-        // Lấy và hiển thị URL hình ảnh đầu tiên
         if (product.getImageUrl() != null && !product.getImageUrl().isEmpty()) {
-            String firstImageUrl = product.getImageUrl().get(0); // Lấy URL đầu tiên
-            System.out.println("Setting first image URL for product ID " + product.getId() + ": " + firstImageUrl);
-            imageUrlField.setText(firstImageUrl); // Gán chỉ URL đầu tiên
-            loadProductImage(firstImageUrl); // Gọi loadProductImage với URL đầu tiên
+            String firstImageUrl = product.getImageUrl().get(0);
+            imageUrlField.setText(firstImageUrl);
+            loadProductImage(firstImageUrl);
         } else {
-            System.out.println("No image URL found for product: " + product.getId());
             imageUrlField.clear();
             productImageView.setImage(null);
         }
@@ -438,9 +589,11 @@ public class ProductController implements Initializable {
         statusLabel.setText(status);
         statusLabel.setStyle("-fx-text-fill: " + (product.getStockQuantity() > 0 ? "#28a745" : "#dc3545") + "; -fx-font-weight: bold;");
     }
+
     private void resetForm() {
         selectedProduct = null;
         isEditMode = false;
+        selectedImageFile = null;
 
         formTitle.setText("Thông tin sản phẩm");
         saveBtn.setText("Thêm mới");
@@ -448,7 +601,7 @@ public class ProductController implements Initializable {
 
         idLabel.setText("Tự sinh");
         nameField.clear();
-        categoryCombo.setValue(null);
+        categoryCombo.setValue(categoryCombo.getItems().isEmpty() ? null : categoryCombo.getItems().get(0));
         priceField.setText("0");
         stockField.setText("0");
         discountField.setText("0");
@@ -464,7 +617,20 @@ public class ProductController implements Initializable {
     private Map<String, Object> createProductData() {
         Map<String, Object> data = new HashMap<>();
         data.put("name", nameField.getText().trim());
-        data.put("categoryName", categoryCombo.getValue());
+
+        String selectedCategoryName = categoryCombo.getValue();
+        if (selectedCategoryName == null || selectedCategoryName.equals("Tất cả danh mục")) {
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng chọn một danh mục hợp lệ!");
+            return null;
+        }
+
+        Integer categoryId = categoryNameToId.get(selectedCategoryName);
+        if (categoryId == null) {
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy ID cho danh mục: " + selectedCategoryName + ". Vui lòng tải lại danh mục!");
+            return null;
+        }
+
+        data.put("categoryId", categoryId);
         data.put("price", Double.parseDouble(priceField.getText()));
         data.put("stockQuantity", Integer.parseInt(stockField.getText()));
         data.put("discount", Double.parseDouble(discountField.getText()));
@@ -500,8 +666,8 @@ public class ProductController implements Initializable {
             return false;
         }
 
-        if (categoryCombo.getValue() == null || categoryCombo.getValue().isEmpty()) {
-            showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng chọn một danh mục!");
+        if (categoryCombo.getValue() == null || categoryCombo.getValue().isEmpty() || categoryCombo.getValue().equals("Tất cả danh mục")) {
+            showAlert(Alert.AlertType.ERROR, "Lỗi", "Vui lòng chọn một danh mục hợp lệ!");
             categoryCombo.requestFocus();
             return false;
         }
@@ -563,30 +729,150 @@ public class ProductController implements Initializable {
             }
         }
 
-        String imageUrl = imageUrlField.getText().trim();
-        if (!imageUrl.isEmpty() && !isValidUrl(imageUrl)) {
-            showAlert(Alert.AlertType.WARNING, "Cảnh báo", "URL hình ảnh có vẻ không hợp lệ!");
-        }
-
         return true;
     }
 
-    private boolean isValidUrl(String url) {
-        try {
-            new URL(url);
-            return url.startsWith("http://") || url.startsWith("https://");
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     // ================ API OPERATIONS ================
-    private void createProduct(Map<String, Object> data) {
-        executeApiCall("POST", BASE_URL, data, "Đã thêm sản phẩm '" + data.get("name") + "' thành công!");
+    public void createProduct(Map<String, Object> data) throws Exception {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8081/api/admin/products"))
+                .header("Authorization", "Bearer " + SessionManager.getInstance().getAccessToken())
+                .timeout(Duration.ofSeconds(10));
+
+        // Xây dựng body multipart
+        MultipartBodyPublisher publisher = new MultipartBodyPublisher()
+                .addPart("name", data.get("name").toString())
+                .addPart("categoryId", String.valueOf(data.get("categoryId")))
+                .addPart("price", data.get("price").toString())
+                .addPart("stockQuantity", String.valueOf(data.get("stockQuantity")))
+                .addPart("discount", data.get("discount").toString())
+                .addPart("description", data.get("description").toString())
+                .addPart("size", data.get("size").toString());
+
+        // Thêm file nếu có
+        if (data.get("imageUrl") != null && data.get("imageUrl") instanceof File) {
+            File imageFile = (File) data.get("imageUrl");
+            if (imageFile.exists()) {
+                publisher.addPart("imageUrl", imageFile);
+            } else {
+                System.out.println("File imageUrl không tồn tại: " + imageFile.getAbsolutePath());
+                throw new Exception("File hình ảnh không tồn tại.");
+            }
+        } else {
+            publisher.addPart("imageUrl", (File) null);
+        }
+
+        HttpRequest request = requestBuilder
+                .header("Content-Type", publisher.getContentType())
+                .POST(publisher.build())
+                .build();
+
+        System.out.println("Gửi yêu cầu tới: " + request.uri());
+        System.out.println("Headers: " + request.headers());
+
+        HttpResponse<String> response = getHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println("Phản hồi từ API - Status: " + response.statusCode());
+        System.out.println("Phản hồi từ API - Body: " + response.body());
+
+        // Kiểm tra mã trạng thái và body
+        if (response.statusCode() == 200 || response.statusCode() == 201) {
+            // Phân tích body để kiểm tra thành công
+            JsonNode root = getObjectMapper().readTree(response.body());
+            String message = root.path("message").asText();
+            if ("Create product success".equals(message)) {
+                return; // Thành công, không ném ngoại lệ
+            }
+        }
+
+        // Nếu không thành công, ném ngoại lệ
+        throw new Exception("Không thể tạo sản phẩm: Mã lỗi " + response.statusCode() + " - " + response.body());
+    }
+    private void updateProduct(int id, Map<String, Object> data) {
+        new Thread(() -> {
+            try {
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                    return;
+                }
+
+                // In dữ liệu JSON để kiểm tra
+                String jsonData = objectMapper.writeValueAsString(data);
+                System.out.println("Dữ liệu gửi đi: " + jsonData);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(BASE_URL + "/" + id))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .method("PUT", HttpRequest.BodyPublishers.ofString(jsonData))
+                        .timeout(Duration.ofSeconds(5))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                String responseBody = response.body();
+
+                if (response.statusCode() == 200) {
+                    JsonNode root = objectMapper.readTree(responseBody);
+                    String message = root.path("message").asText();
+                    if ("Update product success".equals(message)) {
+                        Platform.runLater(() -> {
+                            showAlert(Alert.AlertType.INFORMATION, "Thành công", "Đã cập nhật sản phẩm '" + data.get("name") + "' thành công!");
+                            Product updatedProduct = objectMapper.convertValue(data, Product.class);
+                            updatedProduct.setId(id);
+                            updatedProduct.setCategoryName(categoryCombo.getValue());
+                            int index = productList.indexOf(selectedProduct);
+                            if (index >= 0) {
+                                productList.set(index, updatedProduct);
+                            }
+                            productTable.refresh();
+                            resetForm();
+                        });
+                    } else {
+                        Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Cập nhật thất bại: " + message));
+                    }
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                } else {
+                    Platform.runLater(() -> {
+                        String errorMsg = "Cập nhật thất bại. Mã lỗi: " + response.statusCode();
+                        if (!responseBody.isEmpty()) {
+                            errorMsg += "\nChi tiết: " + responseBody;
+                        }
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", errorMsg);
+                    });
+                }
+            } catch (Exception e) {
+                Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server: " + e.getMessage()));
+            }
+        }).start();
     }
 
-    private void updateProduct(int id, Map<String, Object> data) {
-        executeApiCall("PUT", BASE_URL + "/update/" + id, data, "Đã cập nhật sản phẩm '" + data.get("name") + "' thành công!");
+    // Hàm handleSave: Xử lý sự kiện nhấn nút Lưu/Cập nhật
+    @FXML
+    private void handleSave() throws Exception {
+        if (!validateForm()) {
+            return;
+        }
+
+        saveBtn.setDisable(true); // Vô hiệu hóa nút trong khi xử lý
+        Map<String, Object> data = createProductData();
+        if (data == null) {
+            saveBtn.setDisable(false);
+            return;
+        }
+
+        if (isEditMode && selectedProduct != null) {
+            updateProduct(selectedProduct.getId(), data);
+        } else {
+            createProduct(data); // Giữ lại cho trường hợp thêm mới
+        }
+        saveBtn.setDisable(false); // Kích hoạt lại nút sau khi xử lý
     }
 
     private void deleteProduct(int id) {
@@ -596,53 +882,49 @@ public class ProductController implements Initializable {
     private void executeApiCall(String method, String urlStr, Map<String, Object> data, String successMessage) {
         new Thread(() -> {
             try {
-                URL url = new URL(urlStr);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod(method);
-                conn.setRequestProperty("Authorization", "Bearer " + accessToken);
-
-                if (data != null) {
-                    conn.setRequestProperty("Content-Type", "application/json");
-                    conn.setDoOutput(true);
-                    try (OutputStream os = conn.getOutputStream()) {
-                        os.write(objectMapper.writeValueAsBytes(data));
-                    }
+                String token = SessionManager.getInstance().getAccessToken();
+                if (token == null) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Không tìm thấy token. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                    return;
                 }
 
-                int code = conn.getResponseCode();
+                HttpRequest.BodyPublisher bodyPublisher = data != null ? HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(data)) : HttpRequest.BodyPublishers.noBody();
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(urlStr))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .method(method, bodyPublisher)
+                        .timeout(Duration.ofSeconds(5))
+                        .build();
 
-                String responseMessage = "";
-                if (code >= 400) {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()))) {
-                        StringBuilder response = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            response.append(line);
-                        }
-                        responseMessage = response.toString();
-                    } catch (Exception e) {
-                        responseMessage = "Lỗi không xác định";
-                    }
-                }
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                conn.disconnect();
-
-                final String finalResponseMessage = responseMessage;
-                Platform.runLater(() -> {
-                    if (code == 200 || code == 201) {
+                final String responseBody = response.body();
+                if (response.statusCode() == 200) {
+                    Platform.runLater(() -> {
                         showAlert(Alert.AlertType.INFORMATION, "Thành công", successMessage);
                         loadProducts();
                         if ("DELETE".equals(method)) {
                             resetForm();
                         }
-                    } else {
-                        String errorMsg = "Thao tác thất bại. Mã lỗi: " + code;
-                        if (!finalResponseMessage.isEmpty()) {
-                            errorMsg += "\nChi tiết: " + finalResponseMessage;
+                    });
+                } else if (response.statusCode() == 401) {
+                    Platform.runLater(() -> {
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", "Token không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.");
+                        redirectToLogin();
+                    });
+                } else {
+                    Platform.runLater(() -> {
+                        String errorMsg = "Thao tác thất bại. Mã lỗi: " + response.statusCode();
+                        if (!responseBody.isEmpty()) {
+                            errorMsg += "\nChi tiết: " + responseBody;
                         }
                         showAlert(Alert.AlertType.ERROR, "Lỗi", errorMsg);
-                    }
-                });
+                    });
+                }
             } catch (Exception e) {
                 Platform.runLater(() -> showAlert(Alert.AlertType.ERROR, "Lỗi", "Không thể kết nối đến server: " + e.getMessage()));
             }
@@ -662,6 +944,12 @@ public class ProductController implements Initializable {
 
         alert.getDialogPane().setStyle("-fx-background-color: " + bgColor + "; -fx-border-radius: 5;");
         alert.showAndWait();
+    }
+
+    private void redirectToLogin() {
+        Stage stage = (Stage) mainContent.getScene().getWindow();
+        SceneManager.changeScene(stage, "/com/fxml/Login.fxml", "Đăng nhập");
+        SessionManager.getInstance().clearSession();
     }
 
     // ================ NAVIGATION HANDLERS ================
@@ -694,7 +982,21 @@ public class ProductController implements Initializable {
 
         Optional<ButtonType> result = confirmAlert.showAndWait();
         if (result.isPresent() && result.get() == ButtonType.OK) {
+            SessionManager.getInstance().clearSession();
             SceneManager.changeScene((Stage) mainContent.getScene().getWindow(), "/com/fxml/Login.fxml", "Đăng nhập");
         }
+    }
+
+    // ================ NEW WINDOW SUPPORT ================
+    public Map<String, Integer> getCategoryNameToId() {
+        return categoryNameToId;
+    }
+
+    public HttpClient getHttpClient() {
+        return httpClient;
+    }
+
+    public ObjectMapper getObjectMapper() {
+        return objectMapper;
     }
 }

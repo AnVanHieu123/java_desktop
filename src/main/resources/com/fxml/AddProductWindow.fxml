@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+        <?import javafx.geometry.Insets?>
+        <?import javafx.scene.control.Button?>
+        <?import javafx.scene.control.ComboBox?>
+        <?import javafx.scene.control.Label?>
+        <?import javafx.scene.control.TextArea?>
+        <?import javafx.scene.control.TextField?>
+        <?import javafx.scene.image.ImageView?>
+        <?import javafx.scene.layout.HBox?>
+        <?import javafx.scene.layout.VBox?>
+
+<VBox fx:id="addProductWindow" spacing="10" alignment="CENTER" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="com.javaadv.Controller.AddProductController">
+    <padding>
+        <Insets top="20" right="20" bottom="20" left="20"/>
+    </padding>
+
+    <Label text="Thêm sản phẩm mới" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
+
+    <HBox spacing="10" alignment="CENTER">
+        <ImageView fx:id="previewImage" fitWidth="100" fitHeight="100" preserveRatio="true"/>
+        <VBox spacing="5">
+            <Button fx:id="uploadButton" text="Tải ảnh lên" onAction="#handleUploadImage"/>
+            <Label text="Hiện tại API không hỗ trợ upload file. Vui lòng nhập URL ảnh." style="-fx-text-fill: #dc3545; -fx-font-size: 12px;"/>
+        </VBox>
+    </HBox>
+
+    <TextField fx:id="imageUrlFieldDialog" promptText="URL ảnh"/>
+
+    <TextField fx:id="sizeFieldDialog" promptText="Kích thước (số)"/>
+
+    <TextField fx:id="nameFieldDialog" promptText="Tên sản phẩm"/>
+
+    <TextArea fx:id="descAreaDialog" promptText="Mô tả sản phẩm" wrapText="true" prefHeight="100"/>
+
+    <TextField fx:id="priceFieldDialog" promptText="Giá sản phẩm (VND)"/>
+
+    <TextField fx:id="discountFieldDialog" promptText="Giảm giá (%)"/>
+
+    <TextField fx:id="stockFieldDialog" promptText="Số lượng tồn"/>
+
+    <ComboBox fx:id="categoryComboDialog" promptText="Chọn danh mục"/>
+
+    <HBox spacing="10" alignment="CENTER">
+        <Button fx:id="saveButtonDialog" text="Lưu" onAction="#handleSaveNewProduct" style="-fx-background-color: #28a745; -fx-text-fill: white;"/>
+        <Button fx:id="cancelButtonDialog" text="Hủy" onAction="#handleCancelDialog" style="-fx-background-color: #dc3545; -fx-text-fill: white;"/>
+    </HBox>
+</VBox>
